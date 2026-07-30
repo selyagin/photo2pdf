@@ -5,134 +5,231 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Photo2PDF">
-<title>Photo → PDF (до 15 МБ)</title>
+<meta name="apple-mobile-web-app-title" content="Densel Pro">
+<title>Densel Pro — универсальный инструмент для документов</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
-  :root{--bg:#0f1115;--card:#1b1e26;--accent:#3d8bfd;--text:#eef1f7;--muted:#8b93a7;}
+  :root{
+    --bg:#0f1115;--card:#1b1e26;--card-2:#20242e;--accent:#3d8bfd;--accent-2:#6ea8ff;
+    --text:#eef1f7;--muted:#8b93a7;--border:rgba(255,255,255,0.08);
+    --success:#4ade80;--warn:#facc15;--error:#ff6b6b;
+  }
+  [data-theme="light"]{
+    --bg:#f7f6f2;--card:#ffffff;--card-2:#f3f0ec;--accent:#01696f;--accent-2:#0c8f96;
+    --text:#28251d;--muted:#6b6a63;--border:rgba(0,0,0,0.08);
+    --success:#2e7d32;--warn:#b26a00;--error:#c62828;
+  }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:40px;}
-  header{padding:24px 20px 12px;text-align:center;}
-  header h1{font-size:20px;margin:0 0 4px;}
-  header p{color:var(--muted);font-size:13px;margin:0;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:50px;transition:background .3s,color .3s;}
+  header{padding:20px 20px 8px;text-align:center;position:relative;}
+  header h1{font-size:21px;margin:0 0 4px;display:flex;align-items:center;justify-content:center;gap:8px;}
+  header p{color:var(--muted);font-size:12.5px;margin:0;max-width:320px;margin:0 auto;}
+  .top-controls{position:absolute;top:16px;right:16px;display:flex;gap:8px;}
+  .icon-btn{width:36px;height:36px;border-radius:10px;background:var(--card-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
   .container{max-width:520px;margin:0 auto;padding:16px;}
-  .card{background:var(--card);border-radius:16px;padding:18px;margin-bottom:16px;}
-  .card h2{font-size:14px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
-  #dropzone{border:2px dashed #3a3f4c;border-radius:14px;padding:30px 16px;text-align:center;cursor:pointer;transition:.2s;}
-  #dropzone.drag{border-color:var(--accent);background:#182033;}
-  #dropzone p{margin:6px 0;color:var(--muted);font-size:14px;}
-  #fileInput{display:none;}
+
+  .tabs{display:flex;gap:6px;background:var(--card-2);border-radius:14px;padding:4px;margin-bottom:16px;}
+  .tab{flex:1;text-align:center;padding:10px 4px;border-radius:10px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted);}
+  .tab.active{background:var(--accent);color:#fff;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px;}
+  .card h2{font-size:13px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  #dropzone,.dropzone{border:2px dashed var(--border);border-radius:14px;padding:28px 16px;text-align:center;cursor:pointer;transition:.2s;}
+  #dropzone.drag,.dropzone.drag{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 10%, transparent);}
+  #dropzone p,.dropzone p{margin:6px 0;color:var(--muted);font-size:13.5px;}
+  input[type=file]{display:none;}
+
   button{border:none;border-radius:12px;padding:14px 18px;font-size:15px;font-weight:600;cursor:pointer;width:100%;}
   .btn-primary{background:var(--accent);color:#fff;}
-  .btn-primary:disabled{background:#2c3140;color:#6b7280;cursor:not-allowed;}
-  .btn-secondary{background:#2c3140;color:var(--text);margin-top:8px;}
-  input[type=text]{width:100%;background:#12151c;border:1px solid #2c3140;color:var(--text);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:4px;}
-  #fileList{list-style:none;padding:0;margin:12px 0 0;}
-  #fileList li{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#12151c;border-radius:10px;margin-bottom:6px;font-size:13px;touch-action:none;}
+  .btn-primary:disabled{background:var(--card-2);color:var(--muted);cursor:not-allowed;}
+  .btn-secondary{background:var(--card-2);color:var(--text);margin-top:8px;border:1px solid var(--border);}
+
+  input[type=text],select{width:100%;background:var(--card-2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:4px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+
+  #fileList,.file-list{list-style:none;padding:0;margin:12px 0 0;}
+  #fileList li,.file-list li{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--card-2);border-radius:10px;margin-bottom:6px;font-size:13px;touch-action:none;}
   #fileList li.dragging{opacity:.4;}
   #fileList li .handle{cursor:grab;color:var(--muted);font-size:16px;user-select:none;}
-  #fileList li .thumb{width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0;background:#2c3140;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted);}
+  #fileList li .thumb{width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--muted);}
   #fileList li .thumb img{width:100%;height:100%;object-fit:cover;border-radius:6px;}
   #fileList li .meta{flex:1;min-width:0;}
   #fileList li .meta .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   #fileList li .meta .size{color:var(--muted);font-size:11px;}
   #fileList li .actions{display:flex;gap:6px;}
-  #fileList li .actions span{cursor:pointer;padding:4px 6px;color:var(--muted);}
-  #fileList li .actions span.rm{color:#ff6b6b;}
+  #fileList li .actions span{cursor:pointer;padding:6px;color:var(--muted);}
+  #fileList li .actions span.rm{color:var(--error);}
+
   .progress-wrap{margin-top:14px;}
-  .bar-bg{height:8px;border-radius:6px;background:#2c3140;overflow:hidden;}
+  .bar-bg{height:8px;border-radius:6px;background:var(--card-2);overflow:hidden;}
   .bar-fill{height:100%;width:0%;background:var(--accent);transition:width .2s;}
   #statusText{font-size:13px;color:var(--muted);margin-top:8px;min-height:18px;font-weight:600;}
-  #statusLog{font-size:11px;color:var(--muted);margin-top:6px;max-height:130px;overflow-y:auto;background:#0c0e12;border-radius:8px;padding:8px;font-family:ui-monospace,Menlo,monospace;}
+
+  .unicorn-btn{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:6px 0;width:auto;font-weight:500;}
+  .unicorn-btn span.emoji{font-size:14px;}
+  #statusLog{font-size:11px;color:var(--muted);margin-top:6px;max-height:150px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;font-family:ui-monospace,Menlo,monospace;display:none;}
   #statusLog div{margin-bottom:2px;}
-  #statusLog div.err{color:#ff6b6b;}
-  #statusLog div.warn{color:#facc15;}
+  #statusLog div.err{color:var(--error);}
+  #statusLog div.warn{color:var(--warn);}
+
   .resultCard{display:none;text-align:center;}
   .resultCard .size-big{font-size:26px;font-weight:700;margin:6px 0;}
-  .resultCard .size-ok{color:#4ade80;}
+  .resultCard .size-ok{color:var(--success);}
   .resultCard a{display:block;text-decoration:none;margin-bottom:10px;}
-  .opt-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:14px;gap:12px;}
-  .opt-row.switch label{display:flex;align-items:center;gap:8px;flex:1;}
-  .opt-row select{background:#12151c;border:1px solid #2c3140;color:var(--text);border-radius:8px;padding:6px 10px;font-size:14px;}
-  .toggle{position:relative;width:44px;height:24px;flex-shrink:0;}
+
+  .opt-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:13.5px;gap:12px;}
+  .opt-row.switch{cursor:pointer;}
+  .opt-row.switch label{display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;}
+  .toggle{position:relative;width:44px;height:24px;flex-shrink:0;pointer-events:none;}
   .toggle input{opacity:0;width:0;height:0;}
-  .toggle .slider{position:absolute;inset:0;background:#2c3140;border-radius:999px;transition:.2s;cursor:pointer;}
-  .toggle .slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+  .toggle .slider{position:absolute;inset:0;background:var(--card-2);border:1px solid var(--border);border-radius:999px;transition:.2s;}
+  .toggle .slider::before{content:"";position:absolute;width:18px;height:18px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 2px rgba(0,0,0,.2);}
   .toggle input:checked + .slider{background:var(--accent);}
   .toggle input:checked + .slider::before{transform:translateX(20px);}
   .hint{font-size:11px;color:var(--muted);margin-top:-6px;margin-bottom:12px;}
+
   footer{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;}
-  .batch-note{font-size:12px;color:#facc15;margin-top:8px;display:none;}
-  .warn-note{font-size:12px;color:#facc15;margin-top:8px;display:none;}
-  .badge-offline{display:inline-block;font-size:11px;background:#1c2e22;color:#4ade80;padding:3px 8px;border-radius:999px;margin-top:6px;}
+  .batch-note,.warn-note{font-size:12px;color:var(--warn);margin-top:8px;display:none;}
+  .badge-offline{display:inline-block;font-size:11px;background:color-mix(in srgb, var(--success) 15%, transparent);color:var(--success);padding:3px 8px;border-radius:999px;margin-top:6px;}
+
+  .ocr-result{background:var(--card-2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px;max-height:220px;overflow-y:auto;font-size:13px;line-height:1.5;white-space:pre-wrap;}
+  .ocr-actions{display:flex;gap:8px;margin-top:8px;}
+  .ocr-actions button{width:auto;flex:1;padding:10px;font-size:13px;}
+
+  .size-slider-row{margin-top:10px;}
+  .size-slider-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px;}
+  .size-value{text-align:center;font-size:20px;font-weight:700;color:var(--accent);margin:6px 0;}
+
+  .convert-pages{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px;}
+  .convert-pages .page-item{position:relative;border-radius:10px;overflow:hidden;background:var(--card-2);border:1px solid var(--border);}
+  .convert-pages .page-item img{width:100%;display:block;}
+  .convert-pages .page-item .num{position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:2px 5px;border-radius:5px;}
+  .convert-pages .page-item a{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0);opacity:0;transition:.2s;text-decoration:none;color:#fff;font-size:20px;}
+  .convert-pages .page-item:active a{background:rgba(0,0,0,.4);opacity:1;}
+
+  select#uiLang{width:auto;padding:6px 10px;font-size:13px;}
 </style>
 </head>
 <body>
 <header>
-  <h1>📄 Photo → PDF</h1>
-  <p>Каждое фото — отдельная страница. Итог ≤ 15 МБ.</p>
-  <span class="badge-offline">● Полностью офлайн, включая OCR</span>
+  <div class="top-controls">
+    <select id="uiLang" class="icon-btn" style="width:auto;">
+      <option value="ru">RU</option>
+      <option value="en">EN</option>
+    </select>
+    <div class="icon-btn" id="themeToggle">🌙</div>
+  </div>
+  <h1><img src="logo.png" alt="Densel Pro" style="width:36px;height:36px;border-radius:10px;object-fit:cover;"> Densel Pro</h1>
+  <p data-i18n="tagline">Универсальный инструмент для работы с документами: объединение, сжатие, распознавание текста и конвертация — полностью офлайн.</p>
+  <span class="badge-offline" data-i18n="offlineBadge">● Полностью офлайн, включая OCR</span>
 </header>
 
 <div class="container">
 
-  <div class="card">
-    <div id="dropzone">
-      <p><strong>Нажмите, чтобы выбрать фото</strong></p>
-      <p>или перетащите файлы сюда</p>
-      <input type="file" id="fileInput" accept="image/*" multiple>
-    </div>
-    <ul id="fileList"></ul>
-    <div class="batch-note" id="batchNote">⚠ Больше 25 фото — приложение автоматически разобьёт документ на несколько PDF-файлов.</div>
-    <div class="warn-note" id="warnNote"></div>
+  <div class="tabs">
+    <div class="tab active" data-tab="merge" data-i18n="tabMerge">Собрать PDF</div>
+    <div class="tab" data-tab="convert" data-i18n="tabConvert">PDF → JPEG</div>
   </div>
 
-  <div class="card">
-    <h2>Название документа</h2>
-    <input type="text" id="docTitle" placeholder="например: Договор лизинга №123">
+  <!-- ================= MERGE VIEW ================= -->
+  <div class="view active" id="view-merge">
+
+    <div class="card">
+      <div id="dropzone">
+        <p data-i18n="dropTitle"><strong>Нажмите, чтобы выбрать файлы</strong></p>
+        <p data-i18n="dropSubtitle">Фото, PDF или Word — можно комбинировать</p>
+        <input type="file" id="fileInput" accept="image/*,application/pdf,.doc,.docx" multiple>
+      </div>
+      <ul id="fileList"></ul>
+      <div class="batch-note" id="batchNote" data-i18n="batchNote">⚠ Больше 25 страниц — результат будет автоматически разбит на несколько PDF-файлов.</div>
+      <div class="warn-note" id="warnNote"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="docTitleLabel">Название документа</h2>
+      <input type="text" id="docTitle" data-i18n-placeholder="docTitlePlaceholder" placeholder="например: Отчёт за июль">
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="paramsLabel">Параметры</h2>
+
+      <div class="size-slider-row">
+        <div class="opt-row"><span data-i18n="targetSizeLabel">Желаемый размер файла</span></div>
+        <div class="size-value" id="sizeValueDisplay">15 МБ</div>
+        <input type="range" id="targetSizeSlider" min="1" max="100" value="15" step="1">
+        <div class="size-slider-labels"><span>1 МБ</span><span>100 МБ</span></div>
+      </div>
+
+      <div class="opt-row switch" data-target="bwMode">
+        <label for="bwMode" data-i18n="bwLabel">Чёрно-белый режим (меньше вес для сканов текста)</label>
+        <div class="toggle"><input type="checkbox" id="bwMode"><span class="slider"></span></div>
+      </div>
+      <div class="opt-row switch" data-target="stampMode">
+        <label for="stampMode" data-i18n="stampLabel">Штамп даты и номера страницы</label>
+        <div class="toggle"><input type="checkbox" id="stampMode"><span class="slider"></span></div>
+      </div>
+      <div class="opt-row switch" data-target="ocrMode">
+        <label for="ocrMode" data-i18n="ocrLabel">Распознавание текста OCR (офлайн)</label>
+        <div class="toggle"><input type="checkbox" id="ocrMode"><span class="slider"></span></div>
+      </div>
+
+      <div class="hint" data-i18n="dragHint">Порядок страниц — перетащите файлы в списке выше за значок ☰.</div>
+      <button class="btn-primary" id="buildBtn" disabled data-i18n="buildBtn">Собрать PDF</button>
+
+      <div class="progress-wrap" id="progressWrap" style="display:none;">
+        <div class="bar-bg"><div class="bar-fill" id="barFill"></div></div>
+        <div id="statusText" data-i18n="preparing">Готовим…</div>
+        <button class="unicorn-btn" id="unicornBtn"><span class="emoji">🦄</span><span data-i18n="techDetails">Технические детали</span></button>
+        <div id="statusLog"></div>
+      </div>
+    </div>
+
+    <div id="ocrResultCard" class="card" style="display:none;">
+      <h2 data-i18n="ocrResultLabel">Распознанный текст (OCR)</h2>
+      <div class="ocr-result" id="ocrResultText"></div>
+      <div class="ocr-actions">
+        <button class="btn-secondary" id="copyOcrBtn" data-i18n="copyText">Скопировать текст</button>
+        <button class="btn-secondary" id="downloadOcrBtn" data-i18n="downloadTxt">Скачать .txt</button>
+      </div>
+    </div>
+
+    <div id="resultsContainer"></div>
   </div>
 
-  <div class="card">
-    <h2>Параметры</h2>
-    <div class="opt-row">
-      <span>Лимит итогового PDF</span>
-      <select id="targetSizeMB">
-        <option value="15" selected>15 МБ</option>
-        <option value="10">10 МБ</option>
-        <option value="5">5 МБ</option>
-        <option value="25">25 МБ</option>
-      </select>
+  <!-- ================= CONVERT VIEW (PDF -> JPEG) ================= -->
+  <div class="view" id="view-convert">
+    <div class="card">
+      <div class="dropzone" id="dropzoneConvert">
+        <p data-i18n="dropConvertTitle"><strong>Нажмите, чтобы выбрать PDF</strong></p>
+        <p data-i18n="dropConvertSubtitle">Каждая страница станет отдельным изображением JPEG</p>
+        <input type="file" id="pdfInput" accept="application/pdf">
+      </div>
+      <div id="convertStatus" style="font-size:13px;color:var(--muted);margin-top:10px;"></div>
+      <div class="progress-wrap" id="convertProgressWrap" style="display:none;">
+        <div class="bar-bg"><div class="bar-fill" id="convertBarFill"></div></div>
+        <div id="convertStatusText" style="font-size:13px;color:var(--muted);margin-top:8px;"></div>
+      </div>
     </div>
-    <div class="opt-row switch">
-      <label for="bwMode">Чёрно-белый режим (меньше вес, для сканов текста)</label>
-      <div class="toggle"><input type="checkbox" id="bwMode"><span class="slider"></span></div>
-    </div>
-    <div class="opt-row switch">
-      <label for="stampMode">Штамп даты и номера страницы</label>
-      <div class="toggle"><input type="checkbox" id="stampMode"><span class="slider"></span></div>
-    </div>
-    <div class="opt-row switch">
-      <label for="ocrMode">Распознавание текста OCR (офлайн, без интернета)</label>
-      <div class="toggle"><input type="checkbox" id="ocrMode"><span class="slider"></span></div>
-    </div>
-    <div class="hint">Порядок страниц — перетащите файлы в списке выше за значок ☰.</div>
-    <button class="btn-primary" id="buildBtn" disabled>Собрать PDF</button>
-    <div class="progress-wrap" id="progressWrap" style="display:none;">
-      <div class="bar-bg"><div class="bar-fill" id="barFill"></div></div>
-      <div id="statusText">Готовим…</div>
-      <div id="statusLog"></div>
+
+    <div class="card" id="convertResultsCard" style="display:none;">
+      <h2 data-i18n="convertResultLabel">Результат</h2>
+      <div class="convert-pages" id="convertPages"></div>
+      <button class="btn-primary" id="downloadAllZipBtn" style="margin-top:14px;" data-i18n="downloadAllZip">Скачать все страницы (.zip)</button>
     </div>
   </div>
-
-  <div id="resultsContainer"></div>
 
 </div>
 
-<footer>Работает полностью офлайн, на устройстве. Фото и данные никуда не отправляются.</footer>
+<footer data-i18n="footerText">Работает полностью офлайн, на устройстве. Файлы и данные никуда не отправляются.</footer>
 
 <script src="jspdf.umd.min.js"></script>
 <script src="tesseract.min.js"></script>
-<script src="app.js?v=2.3"></script>
+<script src="pdf.min.js"></script>
+<script src="mammoth.browser.min.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js?v=3.0"></script>
 </body>
 </html>

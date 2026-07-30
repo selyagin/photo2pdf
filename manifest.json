@@ -1,6 +1,7 @@
 {
-  "name": "Photo to PDF Compressor",
-  "short_name": "Photo2PDF",
+  "name": "Densel Pro",
+  "short_name": "Densel Pro",
+  "description": "Универсальный офлайн-инструмент для документов: объединение, сжатие, OCR и конвертация файлов.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f1115",

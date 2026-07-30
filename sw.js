@@ -1,19 +1,12 @@
 
-const CACHE_VERSION = 'photo2pdf-v2-3';
+const CACHE_VERSION = 'densel-pro-v3-0';
 const ASSETS = [
-  './',
-  './index.html',
-  './app.js',
-  './manifest.json',
-  './jspdf.umd.min.js',
-  './tesseract.min.js',
-  './worker.min.js',
-  './tesseract-core-simd.wasm.js',
-  './tesseract-core-simd.wasm',
-  './eng.traineddata.gz',
-  './rus.traineddata.gz',
-  './icon-192.png',
-  './icon-512.png'
+  './', './index.html', './app.js', './i18n.js', './manifest.json',
+  './jspdf.umd.min.js', './tesseract.min.js', './worker.min.js',
+  './tesseract-core-simd.wasm.js', './tesseract-core-simd.wasm',
+  './eng.traineddata.gz', './rus.traineddata.gz',
+  './pdf.min.js', './pdf.worker.min.js', './mammoth.browser.min.js',
+  './icon-192.png', './icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -31,11 +24,9 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Network-first for HTML/JS so updates are picked up immediately;
-// cache-first for large static assets (wasm/traineddata/fonts) to keep offline speed.
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
-  const isCoreFile = url.endsWith('index.html') || url.endsWith('app.js') || url.endsWith('/') || url.endsWith('sw.js');
+  const isCoreFile = url.endsWith('index.html') || url.endsWith('app.js') || url.endsWith('i18n.js') || url.endsWith('/') || url.endsWith('sw.js');
 
   if (isCoreFile) {
     e.respondWith(
