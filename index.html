@@ -18,6 +18,7 @@
   header p{color:var(--muted);font-size:13px;margin:0;}
   .container{max-width:520px;margin:0 auto;padding:16px;}
   .card{background:var(--card);border-radius:16px;padding:18px;margin-bottom:16px;}
+  .card h2{font-size:14px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
   #dropzone{border:2px dashed #3a3f4c;border-radius:14px;padding:30px 16px;text-align:center;cursor:pointer;transition:.2s;}
   #dropzone.drag{border-color:var(--accent);background:#182033;}
   #dropzone p{margin:6px 0;color:var(--muted);font-size:14px;}
@@ -26,21 +27,39 @@
   .btn-primary{background:var(--accent);color:#fff;}
   .btn-primary:disabled{background:#2c3140;color:#6b7280;cursor:not-allowed;}
   .btn-secondary{background:#2c3140;color:var(--text);margin-top:8px;}
-  #fileList{list-style:none;padding:0;margin:12px 0 0;max-height:220px;overflow-y:auto;}
-  #fileList li{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#12151c;border-radius:10px;margin-bottom:6px;font-size:13px;}
-  #fileList li span.size{color:var(--muted);}
-  #fileList li .rm{color:#ff6b6b;cursor:pointer;font-weight:700;margin-left:10px;}
+  .btn-small{width:auto;padding:8px 12px;font-size:12px;border-radius:8px;background:#2c3140;color:var(--text);}
+  input[type=text]{width:100%;background:#12151c;border:1px solid #2c3140;color:var(--text);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:4px;}
+  #fileList{list-style:none;padding:0;margin:12px 0 0;}
+  #fileList li{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#12151c;border-radius:10px;margin-bottom:6px;font-size:13px;touch-action:none;}
+  #fileList li.dragging{opacity:.4;}
+  #fileList li .handle{cursor:grab;color:var(--muted);font-size:16px;user-select:none;}
+  #fileList li img.thumb{width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0;background:#000;}
+  #fileList li .meta{flex:1;min-width:0;}
+  #fileList li .meta .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #fileList li .meta .size{color:var(--muted);font-size:11px;}
+  #fileList li .actions{display:flex;gap:6px;}
+  #fileList li .actions span{cursor:pointer;padding:4px 6px;color:var(--muted);}
+  #fileList li .actions span.rm{color:#ff6b6b;}
   .progress-wrap{margin-top:14px;}
   .bar-bg{height:8px;border-radius:6px;background:#2c3140;overflow:hidden;}
   .bar-fill{height:100%;width:0%;background:var(--accent);transition:width .2s;}
   #statusText{font-size:13px;color:var(--muted);margin-top:8px;min-height:18px;}
-  #resultBox{display:none;text-align:center;}
-  #resultBox .size-big{font-size:26px;font-weight:700;margin:6px 0;}
-  #resultBox .size-ok{color:#4ade80;}
-  a#downloadLink{display:block;text-decoration:none;}
-  .opt-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:14px;}
-  .opt-row select, .opt-row input[type=number]{background:#12151c;border:1px solid #2c3140;color:var(--text);border-radius:8px;padding:6px 10px;font-size:14px;}
+  .resultCard{display:none;text-align:center;}
+  .resultCard .size-big{font-size:26px;font-weight:700;margin:6px 0;}
+  .resultCard .size-ok{color:#4ade80;}
+  .resultCard a{display:block;text-decoration:none;margin-bottom:10px;}
+  .opt-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:14px;gap:12px;}
+  .opt-row.switch label{display:flex;align-items:center;gap:8px;flex:1;}
+  .opt-row select{background:#12151c;border:1px solid #2c3140;color:var(--text);border-radius:8px;padding:6px 10px;font-size:14px;}
+  .toggle{position:relative;width:44px;height:24px;flex-shrink:0;}
+  .toggle input{opacity:0;width:0;height:0;}
+  .toggle .slider{position:absolute;inset:0;background:#2c3140;border-radius:999px;transition:.2s;cursor:pointer;}
+  .toggle .slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+  .toggle input:checked + .slider{background:var(--accent);}
+  .toggle input:checked + .slider::before{transform:translateX(20px);}
+  .hint{font-size:11px;color:var(--muted);margin-top:-6px;margin-bottom:12px;}
   footer{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;}
+  .batch-note{font-size:12px;color:#facc15;margin-top:8px;display:none;}
 </style>
 </head>
 <body>
@@ -58,9 +77,16 @@
       <input type="file" id="fileInput" accept="image/*" multiple>
     </div>
     <ul id="fileList"></ul>
+    <div class="batch-note" id="batchNote">⚠ Больше 25 фото — приложение автоматически разобьёт документ на несколько PDF-файлов.</div>
   </div>
 
   <div class="card">
+    <h2>Название документа</h2>
+    <input type="text" id="docTitle" placeholder="например: Договор лизинга №123">
+  </div>
+
+  <div class="card">
+    <h2>Параметры</h2>
     <div class="opt-row">
       <span>Лимит итогового PDF</span>
       <select id="targetSizeMB">
@@ -70,13 +96,19 @@
         <option value="25">25 МБ</option>
       </select>
     </div>
-    <div class="opt-row">
-      <span>Порядок страниц</span>
-      <select id="orderMode">
-        <option value="asis">Как выбрано</option>
-        <option value="name">По имени файла</option>
-      </select>
+    <div class="opt-row switch">
+      <label for="bwMode">Чёрно-белый режим (меньше вес, для сканов текста)</label>
+      <div class="toggle"><input type="checkbox" id="bwMode"><span class="slider"></span></div>
     </div>
+    <div class="opt-row switch">
+      <label for="stampMode">Штамп даты и номера страницы</label>
+      <div class="toggle"><input type="checkbox" id="stampMode"><span class="slider"></span></div>
+    </div>
+    <div class="opt-row switch">
+      <label for="ocrMode">Распознавание текста OCR (медленно, +вес библиотеки при первой загрузке)</label>
+      <div class="toggle"><input type="checkbox" id="ocrMode"><span class="slider"></span></div>
+    </div>
+    <div class="hint">Порядок страниц — перетащите файлы в списке выше за значок ☰.</div>
     <button class="btn-primary" id="buildBtn" disabled>Собрать PDF</button>
     <div class="progress-wrap" id="progressWrap" style="display:none;">
       <div class="bar-bg"><div class="bar-fill" id="barFill"></div></div>
@@ -84,18 +116,14 @@
     </div>
   </div>
 
-  <div class="card" id="resultBox">
-    <p>Готово!</p>
-    <div class="size-big size-ok" id="finalSize">—</div>
-    <a id="downloadLink" download="document.pdf"><button class="btn-primary">Скачать PDF</button></a>
-    <button class="btn-secondary" id="resetBtn">Сделать ещё один</button>
-  </div>
+  <div id="resultsContainer"></div>
 
 </div>
 
 <footer>Работает полностью офлайн, на устройстве. Фото никуда не отправляются.</footer>
 
 <script src="jspdf.umd.min.js"></script>
+<script src="tesseract.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
