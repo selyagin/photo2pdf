@@ -36,8 +36,9 @@ const BATCH_LIMIT = 25;
 
 // ---------- Theme ----------
 function initTheme() {
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const theme = prefersDark ? 'dark' : 'light';
+  let saved = null;
+  try { saved = localStorage.getItem('densel-theme'); } catch (e) {}
+  const theme = saved === 'dark' || saved === 'light' ? saved : 'light';
   document.documentElement.setAttribute('data-theme', theme);
   themeToggle.textContent = theme === 'dark' ? '🌙' : '☀️';
 }
@@ -46,6 +47,7 @@ themeToggle.addEventListener('click', () => {
   const next = cur === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   themeToggle.textContent = next === 'dark' ? '🌙' : '☀️';
+  try { localStorage.setItem('densel-theme', next); } catch (e) {}
 });
 initTheme();
 
@@ -768,13 +770,123 @@ function renderConvertResults() {
 }
 
 downloadAllZipBtn.addEventListener('click', async () => {
-  for (const img of convertedImages) {
+  downloadAllZipBtn.disabled = true;
+  const originalLabel = downloadAllZipBtn.textContent;
+  downloadAllZipBtn.textContent = '...';
+  try {
+    const zipBlob = await buildZipFromImages(convertedImages);
+    const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
-    a.href = img.dataUrl; a.download = img.name;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    await new Promise(r => setTimeout(r, 150));
+    a.href = url;
+    a.download = 'densel-pro-pages.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (err) {
+    log('ZIP build failed: ' + err.message, 'err');
+  } finally {
+    downloadAllZipBtn.disabled = false;
+    downloadAllZipBtn.textContent = originalLabel;
   }
 });
+
+// ---- Minimal offline ZIP (store, no compression) builder ----
+function crc32(buf) {
+  let c, crcTable = crc32.table || (crc32.table = (() => {
+    const t = [];
+    for (let n = 0; n < 256; n++) {
+      c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c;
+    }
+    return t;
+  })());
+  let crc = 0 ^ (-1);
+  for (let i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ crcTable[(crc ^ buf[i]) & 0xFF];
+  return (crc ^ (-1)) >>> 0;
+}
+
+function dosDateTime(d) {
+  const time = ((d.getHours() & 0x1F) << 11) | ((d.getMinutes() & 0x3F) << 5) | ((Math.floor(d.getSeconds() / 2)) & 0x1F);
+  const date = (((d.getFullYear() - 1980) & 0x7F) << 9) | (((d.getMonth() + 1) & 0x0F) << 5) | (d.getDate() & 0x1F);
+  return { time, date };
+}
+
+async function buildZipFromImages(images) {
+  const encoder = new TextEncoder();
+  const fileRecords = [];
+  const centralRecords = [];
+  let offset = 0;
+  const now = new Date();
+  const { time, date } = dosDateTime(now);
+  const chunks = [];
+
+  for (const img of images) {
+    const buf = new Uint8Array(await img.blob.arrayBuffer());
+    const nameBytes = encoder.encode(img.name);
+    const crc = crc32(buf);
+
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(localHeader.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0, true);
+    lv.setUint16(8, 0, true);
+    lv.setUint16(10, time, true);
+    lv.setUint16(12, date, true);
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, buf.length, true);
+    lv.setUint32(22, buf.length, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lv.setUint16(28, 0, true);
+    localHeader.set(nameBytes, 30);
+
+    chunks.push(localHeader, buf);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(centralHeader.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, time, true);
+    cv.setUint16(14, date, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, buf.length, true);
+    cv.setUint32(24, buf.length, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true);
+    cv.setUint16(34, 0, true);
+    cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0, true);
+    cv.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+
+    centralRecords.push(centralHeader);
+    offset += localHeader.length + buf.length;
+  }
+
+  const centralStart = offset;
+  let centralSize = 0;
+  for (const c of centralRecords) { chunks.push(c); centralSize += c.length; }
+
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(4, 0, true);
+  ev.setUint16(6, 0, true);
+  ev.setUint16(8, images.length, true);
+  ev.setUint16(10, images.length, true);
+  ev.setUint32(12, centralSize, true);
+  ev.setUint32(16, centralStart, true);
+  ev.setUint16(20, 0, true);
+  chunks.push(eocd);
+
+  return new Blob(chunks, { type: 'application/zip' });
+}
 
 // ---------- Service Worker registration (network-first for core files) ----------
 if ('serviceWorker' in navigator) {

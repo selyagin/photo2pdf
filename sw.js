@@ -1,5 +1,5 @@
 
-const CACHE_VERSION = 'densel-pro-v3-1';
+const CACHE_VERSION = 'densel-pro-v3-2';
 const ASSETS = [
   './', './home.html', './index.html', './app.js', './i18n.js', './manifest.json',
   './jspdf.umd.min.js', './tesseract.min.js', './worker.min.js',
