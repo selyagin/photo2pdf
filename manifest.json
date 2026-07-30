@@ -2,7 +2,7 @@
   "name": "Densel Pro",
   "short_name": "Densel Pro",
   "description": "Универсальный офлайн-инструмент для документов: объединение, сжатие, OCR и конвертация файлов.",
-  "start_url": "./index.html",
+  "start_url": "./home.html",
   "display": "standalone",
   "background_color": "#0f1115",
   "theme_color": "#0f1115",

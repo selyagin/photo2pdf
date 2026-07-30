@@ -1,7 +1,7 @@
 
-const CACHE_VERSION = 'densel-pro-v3-0';
+const CACHE_VERSION = 'densel-pro-v3-1';
 const ASSETS = [
-  './', './index.html', './app.js', './i18n.js', './manifest.json',
+  './', './home.html', './index.html', './app.js', './i18n.js', './manifest.json',
   './jspdf.umd.min.js', './tesseract.min.js', './worker.min.js',
   './tesseract-core-simd.wasm.js', './tesseract-core-simd.wasm',
   './eng.traineddata.gz', './rus.traineddata.gz',
@@ -26,7 +26,7 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
-  const isCoreFile = url.endsWith('index.html') || url.endsWith('app.js') || url.endsWith('i18n.js') || url.endsWith('/') || url.endsWith('sw.js');
+  const isCoreFile = url.endsWith('home.html') || url.endsWith('index.html') || url.endsWith('app.js') || url.endsWith('i18n.js') || url.endsWith('/') || url.endsWith('sw.js');
 
   if (isCoreFile) {
     e.respondWith(

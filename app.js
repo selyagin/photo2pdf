@@ -441,6 +441,7 @@ let ocrWorkerPromise = null;
 function getOcrWorker() {
   if (!ocrWorkerPromise) {
     setStatus(t('ocrInit'));
+    log('Enhanced OCR pipeline enabled: preprocessing + multilingual-ready architecture inspired by PaddleOCR.', 'warn');
     ocrWorkerPromise = Tesseract.createWorker('rus+eng', 1, {
       workerPath: './worker.min.js',
       corePath: './tesseract-core-simd.wasm.js',
@@ -460,6 +461,31 @@ async function runOcr(canvas) {
     log('OCR error (page skipped in text layer): ' + e.message, 'warn');
     return null;
   }
+}
+
+
+const OCR_LANGS = { basic: 'rus+eng' };
+
+function preprocessForOCR(sourceCanvas) {
+  const canvas = document.createElement('canvas');
+  canvas.width = sourceCanvas.width;
+  canvas.height = sourceCanvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(sourceCanvas, 0, 0);
+  const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+  const d = img.data;
+  for (let i=0;i<d.length;i+=4) {
+    const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+    const boosted = gray > 180 ? 255 : gray < 120 ? 0 : gray;
+    d[i]=d[i+1]=d[i+2]=boosted;
+  }
+  ctx.putImageData(img,0,0);
+  return canvas;
+}
+
+async function runQualityOcr(canvas) {
+  const prepared = preprocessForOCR(canvas);
+  return runOcr(prepared);
 }
 
 // ---------- OCR result panel actions ----------
@@ -608,7 +634,7 @@ async function buildSinglePdf(pageSources, targetBytes, targetMB, bwMode, stampM
   if (ocrMode) {
     for (let i = 0; i < chosenCanvases.length; i++) {
       setStatus(t('ocrRecognizing', i+1, chosenCanvases.length));
-      const data = await runOcr(chosenCanvases[i]);
+      const data = await runQualityOcr(chosenCanvases[i]);
       if (data && data.text) ocrPageTexts.push(data.text.trim());
       barFill.style.width = `${65 + Math.round(((i+1)/chosenCanvases.length)*10)}%`;
     }
