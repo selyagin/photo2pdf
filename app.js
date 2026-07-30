@@ -1,7 +1,7 @@
 
-// ---------- Photo -> PDF PWA v2 (client-side, offline) ----------
+// ---------- Photo -> PDF PWA v2.1 (client-side, fully offline) ----------
 
-let selectedFiles = []; // {file, id, thumbUrl}
+let selectedFiles = [];
 let idCounter = 0;
 let dragSrcIndex = null;
 
@@ -12,6 +12,7 @@ const buildBtn = document.getElementById('buildBtn');
 const progressWrap = document.getElementById('progressWrap');
 const barFill = document.getElementById('barFill');
 const statusText = document.getElementById('statusText');
+const statusLog = document.getElementById('statusLog');
 const resultsContainer = document.getElementById('resultsContainer');
 const targetSizeSelect = document.getElementById('targetSizeMB');
 const docTitleInput = document.getElementById('docTitle');
@@ -21,6 +22,36 @@ const ocrModeCb = document.getElementById('ocrMode');
 const batchNote = document.getElementById('batchNote');
 
 const BATCH_LIMIT = 25;
+
+function log(msg) {
+  console.log('[Photo2PDF]', msg);
+  if (statusLog) {
+    const line = document.createElement('div');
+    line.textContent = msg;
+    statusLog.appendChild(line);
+    statusLog.scrollTop = statusLog.scrollHeight;
+  }
+}
+
+function setStatus(msg) {
+  statusText.textContent = msg;
+  log(msg);
+}
+
+function showFatalError(err) {
+  console.error(err);
+  setStatus('Ошибка: ' + (err && err.message ? err.message : String(err)));
+  progressWrap.style.display = 'block';
+  barFill.style.background = '#ff6b6b';
+  buildBtn.disabled = false;
+}
+
+window.addEventListener('error', (e) => {
+  log('JS ошибка: ' + e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  log('Необработанная ошибка промиса: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
@@ -32,11 +63,11 @@ dropzone.addEventListener('drop', (e) => {
 });
 fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
-async function handleFiles(fileListInput) {
+function handleFiles(fileListInput) {
   const arr = Array.from(fileListInput).filter(f => f.type.startsWith('image/'));
   for (const f of arr) {
     const thumbUrl = URL.createObjectURL(f);
-    selectedFiles.push({ file: f, id: idCounter++, thumbUrl });
+    selectedFiles.push({ file: f, id: idCounter++, thumbUrl, manualRotation: 0 });
   }
   renderFileList();
 }
@@ -74,10 +105,7 @@ function renderFileList() {
     el.addEventListener('click', () => {
       const id = parseInt(el.dataset.id, 10);
       const item = selectedFiles.find(x => x.id === id);
-      if (item) {
-        item.manualRotation = ((item.manualRotation || 0) + 90) % 360;
-        el.style.transform = `rotate(${item.manualRotation}deg)`;
-      }
+      if (item) item.manualRotation = ((item.manualRotation || 0) + 90) % 360;
     });
   });
 
@@ -89,7 +117,7 @@ function renderFileList() {
 function setupDragReorder() {
   const items = fileListEl.querySelectorAll('li');
   items.forEach(li => {
-    li.addEventListener('dragstart', (e) => {
+    li.addEventListener('dragstart', () => {
       dragSrcIndex = parseInt(li.dataset.index, 10);
       li.classList.add('dragging');
     });
@@ -111,7 +139,6 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// ---- Image loading with EXIF orientation handling ----
 function loadImageWithOrientation(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -121,7 +148,7 @@ function loadImageWithOrientation(file) {
         resolve({ img, orientation, url });
       }).catch(() => resolve({ img, orientation: 1, url }));
     };
-    img.onerror = reject;
+    img.onerror = (e) => reject(new Error('Не удалось загрузить изображение ' + file.name));
     img.src = url;
   });
 }
@@ -130,33 +157,38 @@ function getOrientation(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const view = new DataView(e.target.result);
-      if (view.getUint16(0, false) !== 0xFFD8) return resolve(1);
-      const length = view.byteLength;
-      let offset = 2;
-      while (offset < length) {
-        const marker = view.getUint16(offset, false);
-        offset += 2;
-        if (marker === 0xFFE1) {
-          if (view.getUint32(offset + 2, false) !== 0x45786966) return resolve(1);
-          const little = view.getUint16(offset + 8, false) === 0x4949;
-          offset += 10;
-          const tags = view.getUint16(offset, little);
+      try {
+        const view = new DataView(e.target.result);
+        if (view.getUint16(0, false) !== 0xFFD8) return resolve(1);
+        const length = view.byteLength;
+        let offset = 2;
+        while (offset < length) {
+          const marker = view.getUint16(offset, false);
           offset += 2;
-          for (let i = 0; i < tags; i++) {
-            const entryOffset = offset + i * 12;
-            if (view.getUint16(entryOffset, little) === 0x0112) {
-              return resolve(view.getUint16(entryOffset + 8, little));
+          if (marker === 0xFFE1) {
+            if (view.getUint32(offset + 2, false) !== 0x45786966) return resolve(1);
+            const little = view.getUint16(offset + 8, false) === 0x4949;
+            offset += 10;
+            const tags = view.getUint16(offset, little);
+            offset += 2;
+            for (let i = 0; i < tags; i++) {
+              const entryOffset = offset + i * 12;
+              if (view.getUint16(entryOffset, little) === 0x0112) {
+                return resolve(view.getUint16(entryOffset + 8, little));
+              }
             }
+          } else if ((marker & 0xFF00) !== 0xFF00) {
+            break;
+          } else {
+            offset += view.getUint16(offset, false);
           }
-        } else if ((marker & 0xFF00) !== 0xFF00) {
-          break;
-        } else {
-          offset += view.getUint16(offset, false);
         }
+        resolve(1);
+      } catch (err) {
+        resolve(1);
       }
-      resolve(1);
     };
+    reader.onerror = () => resolve(1);
     reader.readAsArrayBuffer(file.slice(0, 128 * 1024));
   });
 }
@@ -234,24 +266,38 @@ function stampPage(canvas, pageNum, totalPages) {
 }
 
 function canvasToBlob(canvas, quality) {
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality));
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('canvas.toBlob вернул null'));
+    }, 'image/jpeg', quality);
+  });
 }
 
 function blobToDataURL(blob) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Не удалось прочитать blob'));
     reader.readAsDataURL(blob);
   });
 }
 
-// ---- OCR (lazy-load Tesseract worker) ----
+// ---- OCR: fully offline, local language data bundled in /tessdata ----
 let ocrWorkerPromise = null;
 function getOcrWorker() {
   if (!ocrWorkerPromise) {
-    statusText.textContent = 'Загружаем модуль распознавания текста…';
+    setStatus('Инициализируем офлайн-модуль OCR…');
     ocrWorkerPromise = Tesseract.createWorker('rus+eng', 1, {
+      workerPath: './worker.min.js',
+      corePath: './tesseract-core-simd.wasm.js',
       langPath: './tessdata',
+      gzip: true,
+      logger: (m) => {
+        if (m.status && typeof m.progress === 'number') {
+          log(`OCR: ${m.status} ${Math.round(m.progress * 100)}%`);
+        }
+      },
     });
   }
   return ocrWorkerPromise;
@@ -263,19 +309,29 @@ async function runOcr(canvas) {
     const { data } = await worker.recognize(canvas);
     return data;
   } catch (e) {
-    console.warn('OCR failed', e);
+    log('OCR ошибка (страница пропущена в текстовом слое): ' + e.message);
     return null;
   }
 }
 
-// ---- Build PDF (with batching) ----
-buildBtn.addEventListener('click', buildPdfs);
+// ---- Build PDF (batched, with detailed status) ----
+buildBtn.addEventListener('click', () => {
+  buildPdfs().catch(showFatalError);
+});
 
 async function buildPdfs() {
+  if (selectedFiles.length === 0) {
+    setStatus('Сначала добавьте фотографии.');
+    return;
+  }
+
   buildBtn.disabled = true;
   progressWrap.style.display = 'block';
+  barFill.style.background = '';
+  if (statusLog) statusLog.innerHTML = '';
   resultsContainer.innerHTML = '';
   barFill.style.width = '0%';
+  setStatus('Инициализация сборки…');
 
   const files = [...selectedFiles];
   const targetMB = parseFloat(targetSizeSelect.value);
@@ -290,20 +346,24 @@ async function buildPdfs() {
     batches.push(files.slice(i, i + BATCH_LIMIT));
   }
 
+  log(`Всего фото: ${files.length}, частей PDF: ${batches.length}`);
+
   for (let b = 0; b < batches.length; b++) {
-    statusText.textContent = batches.length > 1
-      ? `Обрабатываем часть ${b + 1} из ${batches.length}…`
-      : 'Загружаем фотографии…';
+    setStatus(batches.length > 1
+      ? `Часть ${b + 1} из ${batches.length}: загружаем фотографии…`
+      : 'Загружаем фотографии…');
     await buildSinglePdf(batches[b], targetBytes, targetMB, bwMode, stampMode, ocrMode, baseTitle, b + 1, batches.length);
   }
 
-  progressWrap.style.display = 'none';
+  setStatus('Готово. Файлы доступны для скачивания ниже.');
+  barFill.style.width = '100%';
   buildBtn.disabled = false;
 }
 
 async function buildSinglePdf(files, targetBytes, targetMB, bwMode, stampMode, ocrMode, baseTitle, batchIndex, totalBatches) {
   const decoded = [];
   for (let i = 0; i < files.length; i++) {
+    setStatus(`Декодируем фото ${i + 1} из ${files.length}…`);
     const { img, orientation } = await loadImageWithOrientation(files[i].file);
     decoded.push({ img, orientation, manualRotation: files[i].manualRotation || 0 });
     barFill.style.width = `${Math.round(((i + 1) / files.length) * 10)}%`;
@@ -327,7 +387,7 @@ async function buildSinglePdf(files, targetBytes, targetMB, bwMode, stampMode, o
 
   for (let s = 0; s < settingsList.length; s++) {
     const { maxDim, quality } = settingsList[s];
-    statusText.textContent = `Пробуем качество ${Math.round(quality * 100)}%, макс. сторона ${maxDim}px…`;
+    setStatus(`Подбор сжатия: ${Math.round(quality * 100)}% качества, до ${maxDim}px (попытка ${s + 1}/${settingsList.length})…`);
     const blobs = [];
     const dims = [];
     const canvases = [];
@@ -349,6 +409,8 @@ async function buildSinglePdf(files, targetBytes, targetMB, bwMode, stampMode, o
       if (totalSize > targetBytes * 1.6 && i > 2) { bail = true; break; }
     }
 
+    log(`Попытка ${s + 1}: итоговый размер ~${(totalSize/1024/1024).toFixed(2)} МБ`);
+
     if (!bail && (totalSize <= targetBytes || s === settingsList.length - 1)) {
       chosenBlobs = blobs;
       chosenDims = dims;
@@ -362,19 +424,24 @@ async function buildSinglePdf(files, targetBytes, targetMB, bwMode, stampMode, o
     }
   }
 
+  if (!chosenBlobs || chosenBlobs.length === 0) {
+    throw new Error('Не удалось сжать изображения — попробуйте меньше фото за раз');
+  }
+
   let ocrTextLayers = null;
   if (ocrMode) {
     ocrTextLayers = [];
     for (let i = 0; i < chosenCanvases.length; i++) {
-      statusText.textContent = `Распознаём текст: страница ${i + 1} из ${chosenCanvases.length}…`;
+      setStatus(`Распознаём текст (OCR): страница ${i + 1} из ${chosenCanvases.length}…`);
       const data = await runOcr(chosenCanvases[i]);
       ocrTextLayers.push(data);
       barFill.style.width = `${65 + Math.round(((i + 1) / chosenCanvases.length) * 10)}%`;
     }
   }
 
-  statusText.textContent = 'Собираем PDF…';
+  setStatus('Собираем страницы в PDF…');
   const { jsPDF } = window.jspdf;
+  if (!jsPDF) throw new Error('Библиотека jsPDF не загрузилась (jspdf.umd.min.js)');
   let pdf = null;
 
   for (let i = 0; i < chosenBlobs.length; i++) {
@@ -410,13 +477,14 @@ async function buildSinglePdf(files, targetBytes, targetMB, bwMode, stampMode, o
   }
 
   const pdfBlob = pdf.output('blob');
-  barFill.style.width = '100%';
 
   const finalMB = (pdfBlob.size / (1024 * 1024)).toFixed(2);
   const url = URL.createObjectURL(pdfBlob);
   const fileName = totalBatches > 1
     ? `${sanitizeFileName(baseTitle)}_part${batchIndex}.pdf`
     : `${sanitizeFileName(baseTitle)}.pdf`;
+
+  log(`${fileName}: ${finalMB} МБ`);
 
   const card = document.createElement('div');
   card.className = 'card resultCard';
@@ -433,9 +501,10 @@ function sanitizeFileName(name) {
   return name.replace(/[^a-zA-Zа-яА-Я0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'document';
 }
 
-// ---- Register service worker for offline/PWA behavior ----
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').catch((e) => log('SW ошибка: ' + e.message));
   });
 }
+
+log('Приложение загружено. jsPDF: ' + (window.jspdf ? 'OK' : 'НЕ НАЙДЕН') + ', Tesseract: ' + (window.Tesseract ? 'OK' : 'НЕ НАЙДЕН'));
