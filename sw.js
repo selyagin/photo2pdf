@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'photo2pdf-v2-1';
+const CACHE_NAME = 'photo2pdf-v2-2';
 const ASSETS = [
   './',
   './index.html',
@@ -10,10 +10,10 @@ const ASSETS = [
   './worker.min.js',
   './tesseract-core-simd.wasm.js',
   './tesseract-core-simd.wasm',
-  './tessdata/eng.traineddata.gz',
-  './tessdata/rus.traineddata.gz',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './eng.traineddata.gz',
+  './rus.traineddata.gz',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {

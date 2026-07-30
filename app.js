@@ -1,5 +1,5 @@
 
-// ---------- Photo -> PDF PWA v2.1 (client-side, fully offline) ----------
+// ---------- Photo -> PDF PWA v2.2 (flat structure, robust image decode, fully offline) ----------
 
 let selectedFiles = [];
 let idCounter = 0;
@@ -20,13 +20,15 @@ const bwModeCb = document.getElementById('bwMode');
 const stampModeCb = document.getElementById('stampMode');
 const ocrModeCb = document.getElementById('ocrMode');
 const batchNote = document.getElementById('batchNote');
+const warnNote = document.getElementById('warnNote');
 
 const BATCH_LIMIT = 25;
 
-function log(msg) {
+function log(msg, level) {
   console.log('[Photo2PDF]', msg);
   if (statusLog) {
     const line = document.createElement('div');
+    if (level) line.className = level;
     line.textContent = msg;
     statusLog.appendChild(line);
     statusLog.scrollTop = statusLog.scrollHeight;
@@ -41,17 +43,14 @@ function setStatus(msg) {
 function showFatalError(err) {
   console.error(err);
   setStatus('Ошибка: ' + (err && err.message ? err.message : String(err)));
+  log('ОШИБКА СБОРКИ: ' + (err && err.message ? err.message : String(err)), 'err');
   progressWrap.style.display = 'block';
   barFill.style.background = '#ff6b6b';
   buildBtn.disabled = false;
 }
 
-window.addEventListener('error', (e) => {
-  log('JS ошибка: ' + e.message);
-});
-window.addEventListener('unhandledrejection', (e) => {
-  log('Необработанная ошибка промиса: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
-});
+window.addEventListener('error', (e) => log('JS ошибка: ' + e.message, 'err'));
+window.addEventListener('unhandledrejection', (e) => log('Необработанная ошибка: ' + (e.reason && e.reason.message ? e.reason.message : e.reason), 'err'));
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
@@ -64,12 +63,14 @@ dropzone.addEventListener('drop', (e) => {
 fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
 function handleFiles(fileListInput) {
-  const arr = Array.from(fileListInput).filter(f => f.type.startsWith('image/'));
+  const arr = Array.from(fileListInput).filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+  const skipped = fileListInput.length - arr.length;
+  if (skipped > 0) log(`Пропущено файлов (не изображения): ${skipped}`, 'warn');
   for (const f of arr) {
-    const thumbUrl = URL.createObjectURL(f);
-    selectedFiles.push({ file: f, id: idCounter++, thumbUrl, manualRotation: 0 });
+    selectedFiles.push({ file: f, id: idCounter++, thumbUrl: null, manualRotation: 0, decodeOk: null });
   }
   renderFileList();
+  generateThumbnails();
 }
 
 function renderFileList() {
@@ -78,10 +79,11 @@ function renderFileList() {
     const li = document.createElement('li');
     li.draggable = true;
     li.dataset.index = index;
+    li.dataset.id = item.id;
     const mb = (item.file.size / (1024*1024)).toFixed(1);
     li.innerHTML = `
       <span class="handle">☰</span>
-      <img class="thumb" src="${item.thumbUrl}" alt="">
+      <span class="thumb" data-thumb-id="${item.id}">…</span>
       <span class="meta">
         <div class="name">${escapeHtml(item.file.name)}</div>
         <div class="size">${mb} МБ</div>
@@ -112,6 +114,64 @@ function renderFileList() {
   setupDragReorder();
   buildBtn.disabled = selectedFiles.length === 0;
   batchNote.style.display = selectedFiles.length > BATCH_LIMIT ? 'block' : 'none';
+  updateWarnNote();
+}
+
+function updateWarnNote() {
+  const failed = selectedFiles.filter(f => f.decodeOk === false);
+  if (failed.length > 0) {
+    warnNote.style.display = 'block';
+    warnNote.textContent = `⚠ ${failed.length} файл(ов) не удалось прочитать как изображение (возможно формат HEIC без поддержки в этом браузере или повреждённый файл). Они будут пропущены при сборке PDF.`;
+  } else {
+    warnNote.style.display = 'none';
+  }
+}
+
+async function generateThumbnails() {
+  for (const item of selectedFiles) {
+    if (item.thumbUrl !== null || item.decodeOk === false) continue;
+    const el = fileListEl.querySelector(`[data-thumb-id="${item.id}"]`);
+    try {
+      const bitmap = await decodeImageRobust(item.file);
+      const canvas = document.createElement('canvas');
+      const maxT = 80;
+      const scale = Math.min(1, maxT / Math.max(bitmap.width, bitmap.height));
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      item.thumbUrl = canvas.toDataURL('image/jpeg', 0.6);
+      item.decodeOk = true;
+      if (el) el.innerHTML = `<img src="${item.thumbUrl}" alt="">`;
+      if (bitmap.close) bitmap.close();
+    } catch (err) {
+      item.decodeOk = false;
+      log(`Не удалось декодировать превью для "${item.file.name}": ${err.message}`, 'warn');
+      if (el) el.textContent = '⚠';
+      updateWarnNote();
+    }
+  }
+}
+
+// Robust decode: tries createImageBitmap first (handles HEIC on modern Safari),
+// falls back to classic <img> + object URL decode.
+function decodeImageRobust(file) {
+  return new Promise((resolve, reject) => {
+    if (window.createImageBitmap) {
+      createImageBitmap(file).then(resolve).catch(() => fallbackImgDecode(file).then(resolve).catch(reject));
+    } else {
+      fallbackImgDecode(file).then(resolve).catch(reject);
+    }
+  });
+}
+
+function fallbackImgDecode(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('формат не поддерживается браузером')); };
+    img.src = url;
+  });
 }
 
 function setupDragReorder() {
@@ -131,6 +191,7 @@ function setupDragReorder() {
       selectedFiles.splice(targetIndex, 0, moved);
       dragSrcIndex = null;
       renderFileList();
+      generateThumbnails();
     });
   });
 }
@@ -141,20 +202,17 @@ function escapeHtml(s) {
 
 function loadImageWithOrientation(file) {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
+    decodeImageRobust(file).then((imgOrBitmap) => {
       getOrientation(file).then(orientation => {
-        resolve({ img, orientation, url });
-      }).catch(() => resolve({ img, orientation: 1, url }));
-    };
-    img.onerror = (e) => reject(new Error('Не удалось загрузить изображение ' + file.name));
-    img.src = url;
+        resolve({ img: imgOrBitmap, orientation });
+      }).catch(() => resolve({ img: imgOrBitmap, orientation: 1 }));
+    }).catch((err) => reject(new Error(`Не удалось загрузить "${file.name}": ${err.message}`)));
   });
 }
 
 function getOrientation(file) {
   return new Promise((resolve) => {
+    if (!/jpe?g$/i.test(file.name) && file.type !== 'image/jpeg') return resolve(1);
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
@@ -193,8 +251,15 @@ function getOrientation(file) {
   });
 }
 
-function drawToCanvas(img, orientation, maxDim, manualRotation, bwMode) {
-  let { naturalWidth: w, naturalHeight: h } = img;
+function getDims(imgOrBitmap) {
+  return {
+    w: imgOrBitmap.naturalWidth || imgOrBitmap.width,
+    h: imgOrBitmap.naturalHeight || imgOrBitmap.height,
+  };
+}
+
+function drawToCanvas(imgOrBitmap, orientation, maxDim, manualRotation, bwMode) {
+  const { w, h } = getDims(imgOrBitmap);
   let scale = 1;
   if (maxDim && Math.max(w, h) > maxDim) scale = maxDim / Math.max(w, h);
   let cw = Math.round(w * scale);
@@ -216,7 +281,7 @@ function drawToCanvas(img, orientation, maxDim, manualRotation, bwMode) {
     case 8: ctx.transform(0, -1, 1, 0, 0, canvas.height); break;
     default: break;
   }
-  ctx.drawImage(img, 0, 0, cw, ch);
+  ctx.drawImage(imgOrBitmap, 0, 0, cw, ch);
 
   if (manualRotation) {
     const rotCanvas = document.createElement('canvas');
@@ -283,7 +348,7 @@ function blobToDataURL(blob) {
   });
 }
 
-// ---- OCR: fully offline, local language data bundled in /tessdata ----
+// ---- OCR: fully offline, flat file paths, local language data ----
 let ocrWorkerPromise = null;
 function getOcrWorker() {
   if (!ocrWorkerPromise) {
@@ -291,13 +356,16 @@ function getOcrWorker() {
     ocrWorkerPromise = Tesseract.createWorker('rus+eng', 1, {
       workerPath: './worker.min.js',
       corePath: './tesseract-core-simd.wasm.js',
-      langPath: './tessdata',
+      langPath: './',
       gzip: true,
       logger: (m) => {
         if (m.status && typeof m.progress === 'number') {
           log(`OCR: ${m.status} ${Math.round(m.progress * 100)}%`);
         }
       },
+    }).catch((err) => {
+      log('Не удалось запустить OCR-движок: ' + err.message, 'err');
+      throw err;
     });
   }
   return ocrWorkerPromise;
@@ -309,19 +377,20 @@ async function runOcr(canvas) {
     const { data } = await worker.recognize(canvas);
     return data;
   } catch (e) {
-    log('OCR ошибка (страница пропущена в текстовом слое): ' + e.message);
+    log('OCR ошибка (страница пропущена в текстовом слое): ' + e.message, 'warn');
     return null;
   }
 }
 
-// ---- Build PDF (batched, with detailed status) ----
+// ---- Build PDF (batched, detailed status, skips broken images) ----
 buildBtn.addEventListener('click', () => {
   buildPdfs().catch(showFatalError);
 });
 
 async function buildPdfs() {
-  if (selectedFiles.length === 0) {
-    setStatus('Сначала добавьте фотографии.');
+  const validFiles = selectedFiles.filter(f => f.decodeOk !== false);
+  if (validFiles.length === 0) {
+    setStatus('Нет читаемых изображений для сборки.');
     return;
   }
 
@@ -333,7 +402,9 @@ async function buildPdfs() {
   barFill.style.width = '0%';
   setStatus('Инициализация сборки…');
 
-  const files = [...selectedFiles];
+  const skippedCount = selectedFiles.length - validFiles.length;
+  if (skippedCount > 0) log(`Пропущено нечитаемых файлов: ${skippedCount}`, 'warn');
+
   const targetMB = parseFloat(targetSizeSelect.value);
   const targetBytes = targetMB * 1024 * 1024 * 0.95;
   const bwMode = bwModeCb.checked;
@@ -342,11 +413,11 @@ async function buildPdfs() {
   const baseTitle = docTitleInput.value.trim() || 'document';
 
   const batches = [];
-  for (let i = 0; i < files.length; i += BATCH_LIMIT) {
-    batches.push(files.slice(i, i + BATCH_LIMIT));
+  for (let i = 0; i < validFiles.length; i += BATCH_LIMIT) {
+    batches.push(validFiles.slice(i, i + BATCH_LIMIT));
   }
 
-  log(`Всего фото: ${files.length}, частей PDF: ${batches.length}`);
+  log(`Всего фото к сборке: ${validFiles.length}, частей PDF: ${batches.length}`);
 
   for (let b = 0; b < batches.length; b++) {
     setStatus(batches.length > 1
@@ -364,9 +435,17 @@ async function buildSinglePdf(files, targetBytes, targetMB, bwMode, stampMode, o
   const decoded = [];
   for (let i = 0; i < files.length; i++) {
     setStatus(`Декодируем фото ${i + 1} из ${files.length}…`);
-    const { img, orientation } = await loadImageWithOrientation(files[i].file);
-    decoded.push({ img, orientation, manualRotation: files[i].manualRotation || 0 });
+    try {
+      const { img, orientation } = await loadImageWithOrientation(files[i].file);
+      decoded.push({ img, orientation, manualRotation: files[i].manualRotation || 0 });
+    } catch (err) {
+      log(`Пропущено (ошибка декодирования): ${files[i].file.name} — ${err.message}`, 'err');
+    }
     barFill.style.width = `${Math.round(((i + 1) / files.length) * 10)}%`;
+  }
+
+  if (decoded.length === 0) {
+    throw new Error('Ни одно изображение в этой партии не удалось декодировать');
   }
 
   const settingsList = [
@@ -503,7 +582,7 @@ function sanitizeFileName(name) {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch((e) => log('SW ошибка: ' + e.message));
+    navigator.serviceWorker.register('./sw.js').catch((e) => log('SW ошибка: ' + e.message, 'warn'));
   });
 }
 
