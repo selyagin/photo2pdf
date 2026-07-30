@@ -1,1 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Photo2PDF">
+<title>Photo → PDF (до 15 МБ)</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root{--bg:#0f1115;--card:#1b1e26;--accent:#3d8bfd;--text:#eef1f7;--muted:#8b93a7;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:40px;}
+  header{padding:24px 20px 12px;text-align:center;}
+  header h1{font-size:20px;margin:0 0 4px;}
+  header p{color:var(--muted);font-size:13px;margin:0;}
+  .container{max-width:520px;margin:0 auto;padding:16px;}
+  .card{background:var(--card);border-radius:16px;padding:18px;margin-bottom:16px;}
+  #dropzone{border:2px dashed #3a3f4c;border-radius:14px;padding:30px 16px;text-align:center;cursor:pointer;transition:.2s;}
+  #dropzone.drag{border-color:var(--accent);background:#182033;}
+  #dropzone p{margin:6px 0;color:var(--muted);font-size:14px;}
+  #fileInput{display:none;}
+  button{border:none;border-radius:12px;padding:14px 18px;font-size:15px;font-weight:600;cursor:pointer;width:100%;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:disabled{background:#2c3140;color:#6b7280;cursor:not-allowed;}
+  .btn-secondary{background:#2c3140;color:var(--text);margin-top:8px;}
+  #fileList{list-style:none;padding:0;margin:12px 0 0;max-height:220px;overflow-y:auto;}
+  #fileList li{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#12151c;border-radius:10px;margin-bottom:6px;font-size:13px;}
+  #fileList li span.size{color:var(--muted);}
+  #fileList li .rm{color:#ff6b6b;cursor:pointer;font-weight:700;margin-left:10px;}
+  .progress-wrap{margin-top:14px;}
+  .bar-bg{height:8px;border-radius:6px;background:#2c3140;overflow:hidden;}
+  .bar-fill{height:100%;width:0%;background:var(--accent);transition:width .2s;}
+  #statusText{font-size:13px;color:var(--muted);margin-top:8px;min-height:18px;}
+  #resultBox{display:none;text-align:center;}
+  #resultBox .size-big{font-size:26px;font-weight:700;margin:6px 0;}
+  #resultBox .size-ok{color:#4ade80;}
+  a#downloadLink{display:block;text-decoration:none;}
+  .opt-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:14px;}
+  .opt-row select, .opt-row input[type=number]{background:#12151c;border:1px solid #2c3140;color:var(--text);border-radius:8px;padding:6px 10px;font-size:14px;}
+  footer{text-align:center;color:var(--muted);font-size:11px;margin-top:20px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>📄 Photo → PDF</h1>
+  <p>Каждое фото — отдельная страница. Итог ≤ 15 МБ.</p>
+</header>
 
+<div class="container">
+
+  <div class="card">
+    <div id="dropzone">
+      <p><strong>Нажмите, чтобы выбрать фото</strong></p>
+      <p>или перетащите файлы сюда</p>
+      <input type="file" id="fileInput" accept="image/*" multiple>
+    </div>
+    <ul id="fileList"></ul>
+  </div>
+
+  <div class="card">
+    <div class="opt-row">
+      <span>Лимит итогового PDF</span>
+      <select id="targetSizeMB">
+        <option value="15" selected>15 МБ</option>
+        <option value="10">10 МБ</option>
+        <option value="5">5 МБ</option>
+        <option value="25">25 МБ</option>
+      </select>
+    </div>
+    <div class="opt-row">
+      <span>Порядок страниц</span>
+      <select id="orderMode">
+        <option value="asis">Как выбрано</option>
+        <option value="name">По имени файла</option>
+      </select>
+    </div>
+    <button class="btn-primary" id="buildBtn" disabled>Собрать PDF</button>
+    <div class="progress-wrap" id="progressWrap" style="display:none;">
+      <div class="bar-bg"><div class="bar-fill" id="barFill"></div></div>
+      <div id="statusText">Готовим…</div>
+    </div>
+  </div>
+
+  <div class="card" id="resultBox">
+    <p>Готово!</p>
+    <div class="size-big size-ok" id="finalSize">—</div>
+    <a id="downloadLink" download="document.pdf"><button class="btn-primary">Скачать PDF</button></a>
+    <button class="btn-secondary" id="resetBtn">Сделать ещё один</button>
+  </div>
+
+</div>
+
+<footer>Работает полностью офлайн, на устройстве. Фото никуда не отправляются.</footer>
+
+<script src="jspdf.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
